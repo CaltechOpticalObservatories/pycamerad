@@ -2,6 +2,7 @@
 import socket
 import select
 import os
+import json
 from threading import Thread
 from datetime import datetime, timezone
 import time
@@ -16,11 +17,15 @@ from camera_info import CameraInfo
 # Instantiate a global object of the CameraInfo class. This
 # carries default and current camera settings (mode, type, etc.)
 
+default_config = os.path.join(version.ROOT_DIR, interface.json)
+
 
 class Interface():
     """Interface class"""
     
-    def __init__(self, verbose=False): 
+    def __init__(self, verbose=False, config_file=default_config):
+        with open(config_file) as cfgf:
+            icfg = json.load(cfgf)
         self.caminfo = CameraInfo()
         self.verbose = verbose
     
@@ -237,7 +242,7 @@ class Interface():
     # --------------------------------------------------------------------------
     # @fn     set_mode
     # --------------------------------------------------------------------------
-    def set_mode(self.mode_in):
+    def set_mode(self, mode_in):
         """
         Set camera mode.
         -------------------------------------------------
