@@ -10,6 +10,7 @@ import numpy as np
 # from IPython.core.debugger import Tracer
 # import pdb # use with pdb.set_trace()
 
+import version
 import hosts
 from camera_info import CameraInfo
 # Instantiate a global object of the CameraInfo class. This
