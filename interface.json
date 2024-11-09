@@ -1,4 +1,4 @@
-"camip": {"1": "127.0.0.1"},
-"camport": {"1": 3031},
-"camname": {"1": "localhost"},
-"camsocket": {"1": ""}
+"camip": ["127.0.0.1"],
+"camport": [3031],
+"camname": ["localhost"],
+"camsocket": []
