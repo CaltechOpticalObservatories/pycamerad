@@ -25,7 +25,10 @@ class Interface():
     
     def __init__(self, verbose=False, config_file=default_config):
         with open(config_file) as cfgf:
-            self.hosts = json.load(cfgf)
+            hosts = json.load(cfgf)
+        self.hosts = hosts
+        self.numcams = len(self.hosts)
+ 
         self.caminfo = CameraInfo()
         self.verbose = verbose
     
@@ -76,20 +79,20 @@ class Interface():
         """
 
         if hostlist is None:
-            hostlist = [1]
+            hostlist = self.hosts
         if hostlist == "local":
-            hostlist = ["localhost",]
+            hostlist = self.hosts["localhost"]
 
         if not iterable(hostlist):
             hostlist = [hostlist]
 
         # open sockets to camera servers indicated by hostlist
-        for host in hosts.camhost:
+        for host in hostlist:
             if self.verbose:
-                print("connecting to %s: %s" % (hosts.camname[host],
-                                                hosts.camport[host]))
-            hosts.camsocket[host] = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            hosts.camsocket[host].connect((hosts.camhost[host], hosts.camport[host]))
+                print("connecting to %s: %d" % (host["ip"],
+                                                host["port"]))
+            host["socket"] = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            host["socket"].connect((host["ip"], host["port"]))
 
         error = self.__send_command("open")[0]
 
@@ -137,9 +140,7 @@ class Interface():
 
         # then close sockets to camera servers that were opened.
         #
-        if not hosts.camsocket:  # but not if nothing is defined
-            return
-        for host in hosts.camhost:
+        for host in self.hosts:
             if self.verbose:
                 print("closing connection to %s: %s" % (hosts.camname[host],
                                                         hosts.camhost[host]))
@@ -444,10 +445,10 @@ class Interface():
 
         # loop through the set of cameras,
         # send command to each in a separate thread
-        for csock in hosts.camsocket:
+        for csock in self.hostsocket:
             # create list by socket and name of cameras that are sent a command
-            print(hosts.camsocket[csock])
-            sendsocket.append(hosts.camsocket[csock])
+            print(csock)
+            sendsocket.append(csock)
             sendname.append(hosts.camname[csock])
             # count up the number of cameras that are sent a command
             numcams += 1
