@@ -89,10 +89,10 @@ class Interface():
         # open sockets to camera servers indicated by hostlist
         for host in hostlist:
             if self.verbose:
-                print("connecting to %s: %d" % (host["ip"],
-                                                host["port"]))
-            host["socket"] = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            host["socket"].connect((host["ip"], host["port"]))
+                print("connecting to %s: %d" % (self.hosts[host]["ip"],
+                                                self.hosts[host]["port"]))
+            self.hosts[host]["socket"] = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.hosts[host]["socket"].connect((self.hosts[host]["ip"], self.hosts[host]["port"]))
 
         error = self.__send_command("open")[0]
 
