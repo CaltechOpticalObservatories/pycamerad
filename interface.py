@@ -25,7 +25,7 @@ class Interface():
     
     def __init__(self, verbose=False, config_file=default_config):
         with open(config_file) as cfgf:
-            icfg = json.load(cfgf)
+            self.hosts = json.load(cfgf)
         self.caminfo = CameraInfo()
         self.verbose = verbose
     
