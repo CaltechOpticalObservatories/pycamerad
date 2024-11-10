@@ -79,9 +79,9 @@ class Interface():
         """
 
         if hostlist is None:
-            hostlist = self.hosts
+            hostlist = list(self.hosts.keys())
         if hostlist == "local":
-            hostlist = self.hosts["localhost"]
+            hostlist = ["localhost"]
 
         if not iterable(hostlist):
             hostlist = [hostlist]
@@ -89,8 +89,7 @@ class Interface():
         # open sockets to camera servers indicated by hostlist
         for host in hostlist:
             if self.verbose:
-                print("connecting to %s: %d" % (self.hosts[host]["ip"],
-                                                self.hosts[host]["port"]))
+                print("connecting to %s: %s %d" % (host, self.hosts[host]["ip"], self.hosts[host]["port"]))
             self.hosts[host]["socket"] = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.hosts[host]["socket"].connect((self.hosts[host]["ip"], self.hosts[host]["port"]))
 
@@ -399,15 +398,15 @@ class Interface():
     #
     # This is an internal package function, not meant to be called by the user.
     # --------------------------------------------------------------------------
-    def __send_threaded_command(self, hostnum, command, verbose=__VERBOSE):
+    def __send_threaded_command(self, host, command):
         if self.verbose:
             print(
                 'sending "%s" to %s (%s, %d)'
-                % (command, hosts.camname[hostnum], hosts.camhost[hostnum],
-                   hosts.camport[hostnum])
+                % (command, host, self.hosts[host]["ip"],
+                   self.hosts[host]["port"])
             )
         try:
-            hosts.camsocket[hostnum].sendall(command.encode())
+            self.hosts[host]["socket"].sendall(command.encode())
         except:
             print("unable to send command. host may be down.")
 
@@ -439,20 +438,23 @@ class Interface():
             command.append(str(arg))
         command = " ".join(command) + endchar
 
-        if not hosts.camsocket:
+        if not self.sockets:
             print("ERROR: no connected sockets")
             return 1, ""
 
         # loop through the set of cameras,
         # send command to each in a separate thread
-        for csock in self.hostsocket:
+        for host in self.hosts:
+            if "socket" not in self.hosts[host]:
+                continue
             # create list by socket and name of cameras that are sent a command
+            csock = self.hosts[host]["socket"]
             print(csock)
             sendsocket.append(csock)
-            sendname.append(hosts.camname[csock])
+            sendname.append(host)
             # count up the number of cameras that are sent a command
             numcams += 1
-            thr = Thread(target=self.__send_threaded_command, args=(csock, command))
+            thr = Thread(target=self.__send_threaded_command, args=(host, command))
             thr.start()
             threads.append(thr)
 
@@ -588,8 +590,6 @@ class Interface():
 
     # Code after here is to make the magic board work.
     # That is, create and write bitstreams
-
-
     # -----------------------------------------------------------------------------
     # @fn     __write_bits(BITSTRING)
     # @brief  writes a bitstring to the magic board serial register where bitstring
