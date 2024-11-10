@@ -17,7 +17,7 @@ from camera_info import CameraInfo
 # Instantiate a global object of the CameraInfo class. This
 # carries default and current camera settings (mode, type, etc.)
 
-default_config = os.path.join(version.ROOT_DIR, interface.json)
+default_config = os.path.join(version.ROOT_DIR, "interface.json")
 
 
 class Interface():
