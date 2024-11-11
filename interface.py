@@ -12,7 +12,6 @@ import numpy as np
 # import pdb # use with pdb.set_trace()
 
 import version
-import hosts
 from camera_info import CameraInfo
 # Instantiate a global object of the CameraInfo class. This
 # carries default and current camera settings (mode, type, etc.)
@@ -20,18 +19,19 @@ from camera_info import CameraInfo
 default_config = os.path.join(version.ROOT_DIR, "interface.json")
 
 
-class Interface():
+class Interface:
     """Interface class"""
-    
+
     def __init__(self, verbose=False, config_file=default_config):
         with open(config_file) as cfgf:
             hosts = json.load(cfgf)
         self.hosts = hosts
         self.numcams = len(self.hosts)
- 
+
         self.caminfo = CameraInfo()
         self.verbose = verbose
-    
+        self.number_of_connections = 0
+
 
     # --------------------------------------------------------------------------
     # @fn     verbose
@@ -68,7 +68,8 @@ class Interface():
     # --------------------------------------------------------------------------
     # @fn     camerad_open
     # --------------------------------------------------------------------------
-    def camerad_open(self, hostlist=None, do_load=True, do_power_on=True, do_setup=True):
+    def camerad_open(self, hostlist=None, do_load=True, do_power_on=True,
+                     do_setup=True):
         """
         Open connection to camera and initialize CCD controllers using the
         default parameters specified in the archon.cfg configuration
@@ -89,9 +90,13 @@ class Interface():
         # open sockets to camera servers indicated by hostlist
         for host in hostlist:
             if self.verbose:
-                print("connecting to %s: %s %d" % (host, self.hosts[host]["ip"], self.hosts[host]["port"]))
-            self.hosts[host]["socket"] = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.hosts[host]["socket"].connect((self.hosts[host]["ip"], self.hosts[host]["port"]))
+                print("connecting to %s: %s %d" % (host, self.hosts[host]["ip"],
+                                                   self.hosts[host]["port"]))
+            self.hosts[host]["socket"] = socket.socket(socket.AF_INET,
+                                                       socket.SOCK_STREAM)
+            self.hosts[host]["socket"].connect((self.hosts[host]["ip"],
+                                                self.hosts[host]["port"]))
+            self.number_of_connections += 1
 
         error = self.__send_command("open")[0]
 
@@ -141,10 +146,11 @@ class Interface():
         #
         for host in self.hosts:
             if self.verbose:
-                print("closing connection to %s: %s" % (hosts.camname[host],
-                                                        hosts.camhost[host]))
-            hosts.camsocket[host].close()
-            del hosts.camsocket[host]
+                print("closing connection to %s: %s" % (host,
+                                                        self.hosts[host]["ip"]))
+            self.hosts[host]["socket"].close()
+            del self.hosts[host]["socket"]
+            self.number_of_connections -= 1
         if error == 0:
             print("camera closed")
 
@@ -154,7 +160,8 @@ class Interface():
     # --------------------------------------------------------------------------
     # @fn     load
     # --------------------------------------------------------------------------
-    def load(self, acffile, mode="DEFAULT", basename="", imtype="TEST", power="ON"):
+    def load(self, acffile, mode="DEFAULT", basename="", imtype="TEST",
+             power="ON"):
         """
         load ACF file
         """
@@ -331,47 +338,6 @@ class Interface():
 
 
     # --------------------------------------------------------------------------
-    # @fn     set_compression
-    # --------------------------------------------------------------------------
-    def set_compression(self, ctype, *noisebits):
-        """
-        Here for backward-compatibility with ZTF scripts.
-        This has no functionality.
-        ---------------------------------------------------------------------
-        Set FITS compression type and optionally noisebits. Acceptable types:
-        NONE, RICE, GZIP, PLIO
-        An optional second parameter may be given, specifying the noisebits
-        for floating-point compression. If not specified then the last value
-        is used. The default is 4.
-        """
-        if ctype:
-            pass
-        if noisebits:
-            pass
-        #   if noisebits:
-        #       noisebits = int(noisebits[0])
-        #   else:
-        #       noisebits = caminfo.get_compression_noisebits()
-
-        #   old_type      = caminfo.get_compression_type()
-        #   old_noisebits = caminfo.get_compression_noisebits()
-
-        #   if (old_type != ctype) or (old_noisebits != noisebits):
-        #       error = caminfo.set_compression(ctype, noisebits)
-        #       if not error:
-        #           error = __send_command(commands.FITS_COMPRESSION,
-        #                                  caminfo.compression,
-        #                                  caminfo.noisebits)[0]
-        #       if not error:
-        #           print "COMPRESSION changed: %s,%s -> %s,%s" %
-        #              (old_type, old_noisebits, ctype, noisebits)
-        #   else:
-        #       error = 0
-        #   return error
-        return 0
-
-
-    # --------------------------------------------------------------------------
     # @fn     expose
     # --------------------------------------------------------------------------
     def expose(self, exptime=0, iterations=1):
@@ -438,7 +404,7 @@ class Interface():
             command.append(str(arg))
         command = " ".join(command) + endchar
 
-        if not self.sockets:
+        if self.number_of_connections <= 0:
             print("ERROR: no connected sockets")
             return 1, ""
 
@@ -565,9 +531,9 @@ class Interface():
     def __setup_observation(self, quiet=False):
 
         print("CAMERA_SETUP_OBSERVATION...")
-        print("DEBUG: setup_observation incoming mode=", caminfo.get_mode())
+        print("DEBUG: setup_observation incoming mode=", self.caminfo.get_mode())
         if not quiet:
-            print_settings()
+            self.print_settings()
 
         # At minimum, always use YYYYMMDD_hhmmss as the image root name, even
         # if "basename" is empty (note that image_name can never be empty).
@@ -575,7 +541,7 @@ class Interface():
 
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
-        if caminfo.get_basename() != "":
+        if self.caminfo.get_basename() != "":
             image_name = self.caminfo.get_basename() + "_" + timestamp
         else:
             image_name = timestamp
@@ -677,7 +643,6 @@ class Interface():
             runthismode = "RAW"
 
         error = 0
-        self.set_compression("NONE")  # set_compression is now in the same file
 
         if os.path.isfile(os.path.expanduser(acf_file)):
             error = self.load(acf_file, mode=runthismode)  # load in now in same file
@@ -705,7 +670,7 @@ class Interface():
         if timeit:
             print("Time to write 48 bits: %.3f sec" % (time.time() - time_0))
 
-        expose(0, iterations)  # expose is now in same file
+        self.expose(0, iterations)  # expose is now in same file
 
         return error
 
@@ -735,7 +700,6 @@ class Interface():
             runthismode = "RAW"
 
         error = 0
-        self.set_compression("NONE")
         time_0 = time.time()
         # if the parameter acf_file is not set, don't load anything
         if os.path.isfile(os.path.expanduser(acf_file)):
