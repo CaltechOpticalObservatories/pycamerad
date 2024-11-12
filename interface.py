@@ -16,21 +16,44 @@ from camera_info import CameraInfo
 # Instantiate a global object of the CameraInfo class. This
 # carries default and current camera settings (mode, type, etc.)
 
-default_config = os.path.join(version.ROOT_DIR, "interface.json")
+default_interface_config = os.path.join(version.ROOT_DIR, "interface.json")
+default_host_config = os.path.join(version.ROOT_DIR, "hosts.json")
 
 
 class Interface:
     """Interface class"""
 
-    def __init__(self, verbose=False, config_file=default_config):
-        with open(config_file) as cfgf:
-            hosts = json.load(cfgf)
+    def __init__(self, verbose=True,
+                 interface_config_file=default_interface_config,
+                 host_config_file=default_host_config):
+        # read interface
+        with open(interface_config_file) as icfgf:
+            camera_interface = json.load(icfgf)
+        self.interface = camera_interface["interface"]
+        if "archon" in self.interface:
+            self.archon = True
+            self.power_commands = []
+        else:
+            self.archon = False
+            self.power_commands = camera_interface["power_commands"]
+            self.device_list = camera_interface["device_list"]
+
+        # read hosts
+        with open(host_config_file) as hcfgf:
+            hosts = json.load(hcfgf)
         self.hosts = hosts
         self.numcams = len(self.hosts)
 
         self.caminfo = CameraInfo()
         self.verbose = verbose
         self.number_of_connections = 0
+
+        self.set_verbosity(verbose)
+
+        if self.verbose:
+            print("pycamerad version: ", version.__version__)
+            print("interface:", self.interface)
+            self.print_settings()
 
 
     # --------------------------------------------------------------------------
@@ -57,13 +80,11 @@ class Interface:
         """
         Print the current camera settings
         """
-        print("  mode          = '%s'" % self.caminfo.get_mode())
+        if self.archon:
+            print("  mode          = '%s'" % self.caminfo.get_mode())
         print("  basename      = '%s'" % self.caminfo.get_basename())
         print("  type          = '%s'" % self.caminfo.get_type())
         print("  exptime       = %d" % self.caminfo.get_exptime())
-        print("  compression   = '%s'" % self.caminfo.get_compression_type())
-        print("  noisebits     = %d  " % self.caminfo.get_compression_noisebits())
-
 
     # --------------------------------------------------------------------------
     # @fn     camerad_open
@@ -103,12 +124,11 @@ class Interface:
         try:
             if do_load:
                 if error == 0:
-                    print("loading default acf file...")
+                    print("loading default firmware file...")
                     error = self.__send_command("load")[0]
                 if do_power_on:
                     if error == 0:
-                        print("turning power on...")
-                        error = self.__send_command("POWERON")[0]
+                        error = self.set_power("ON")
                 else:
                     print("Skipping POWERON...")
                 if do_setup:
@@ -325,11 +345,29 @@ class Interface:
         Acceptable values are: "ON" or "OFF".
         """
         if power == "ON":
-            print("turning on power...")
-            error = self.__send_command("POWERON")[0]
+            if not self.archon:     # ARC interface
+                if self.power_commands:
+                    print("turning on ARC power...")
+                    error = self.__send_command("native",
+                                                self.power_commands[0])
+                else:
+                    print("no power commands for ARC interface")
+                    error = 1
+            else:
+                print("turning on Archon power...")
+                error = self.__send_command("POWERON")[0]
         elif power == "OFF":
-            print("turning off power...")
-            error = self.__send_command("POWEROFF")[0]
+            if not self.archon:     # ARC interface
+                if self.power_commands:
+                    print("turning off ARC power...")
+                    error = self.__send_command("native",
+                                                self.power_commands[1])
+                else:
+                    print("no power commands for ARC interface")
+                    error = 1
+            else:
+                print("turning off Archon power...")
+                error = self.__send_command("POWEROFF")[0]
         else:
             print("unrecognized power argument", power)
             error = None
@@ -343,13 +381,10 @@ class Interface:
     def expose(self, exptime=0, iterations=1):
         """
         Take an exposure, or multiple exposures if "iterations" is specified.
-        "delay" specifies idle time between exposures in seconds.
 
         This is essentially a macro, calling the following functions on the server:
         expose(), readframe(), and writeframe()
         """
-        # mode = caminfo.get_mode()
-
         self.caminfo.set_exptime(exptime)
 
         print("starting exposure")
@@ -549,7 +584,7 @@ class Interface:
         error = self.__send_command("basename", image_name)[0]
         if error == 0:
             error = self.__send_command("exptime", self.caminfo.exptime)[0]
-        if error == 0:
+        if error == 0 and self.archon:
             error = self.__send_command("mode", self.caminfo.get_mode())[0]
         return error
 

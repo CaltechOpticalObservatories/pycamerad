@@ -10,16 +10,14 @@
 # The CameraInfo class stores and retrieves current settings for
 # the camera module of the ztf package.
 # --------------------------------------------------------------------------
-class CameraInfo():
+class CameraInfo:
     """
     This is the CameraInfo class, which is used to store
     and retrieve current settings, in particular the
-    camera mode, image type, basename, exposure time,
-    and compression type.
+    camera mode, image type, basename, and exposure time.
 
-    This is for internal use only by the camera module
-    of the ztf package. The user should never need to
-    look in here.
+    This is for internal use only by the camera module.
+    The user should never need to look in here.
     """
 
     # codes for types
@@ -40,31 +38,25 @@ class CameraInfo():
     }
     TYPE_NAME = {v: k for k, v in TYPE.items()}
 
-    # codes for FITS compression types
-    #
-    COMPRESSION = {"NONE": 0, "RICE": 1, "GZIP": 2, "PLIO": 3}
-    COMPRESSION_NAME = {v: k for k, v in COMPRESSION.items()}
-
     def __init__(
         self,
+        interface="archon",
         mode="DEFAULT",
         imtype=TYPE["TEST"],
         basename="",
-        compression=COMPRESSION["NONE"],
-        noisebits=4,
         iterations=1,
         exptime=0,
     ):
         """
         initialize the class
         """
-        self.imtype = imtype
+        self.interface = interface
         self.mode = mode
-        self.exptime = exptime
-        self.iterations = iterations
-        self.compression = compression
-        self.noisebits = noisebits
+        self.imtype = imtype
         self.basename = basename
+        self.iterations = iterations
+        self.exptime = exptime
+
 
     def get_basename(self):
         """
@@ -96,42 +88,19 @@ class CameraInfo():
         """
         return self.mode
 
-    def get_compression_type(self):
-        """
-        Return the compression type as a string.
-        """
-        return self.COMPRESSION_NAME[self.compression]
-
-    def get_compression_noisebits(self):
-        """
-        Return the compression noisebits as a string.
-        """
-        return self.noisebits
-
     def set_type(self, imtype):
         """
         Set the image type.
         """
+        retval = 0
         if imtype in self.TYPE.keys():
             self.imtype = self.TYPE[imtype]
-            return 0
         else:
             print("  valid CameraInfo types:", end=" ")
             print(self.TYPE.keys())
-            return 1
+            retval = 1
 
-    def set_compression(self, ctype, noisebits):
-        """
-        Set the compression type.
-        """
-        if ctype in self.COMPRESSION.keys():
-            self.compression = self.COMPRESSION[ctype]
-            self.noisebits = noisebits
-            return 0
-        else:
-            print("  valid CameraInfo compression types:", end=" ")
-            print(self.COMPRESSION.keys())
-            return 1
+        return retval
 
     def set_mode(self, mode_in):
         """
@@ -145,23 +114,27 @@ class CameraInfo():
         """
         Set the exposure time.
         """
+        retval = 0
         if exptime >= 0:
             self.exptime = exptime
-            return 0
         else:
             print("  exptime must be >= 0")
-            return 1
+            retval = 1
+
+        return retval
 
     def set_iterations(self, iterations):
         """
         Set the iterations
         """
+        retval = 0
         if iterations > 0:
             self.iterations = iterations
-            return 0
         else:
             print("  iterations must be > 0")
-            return 1
+            retval = 1
+
+        return retval
 
     def set_basename(self, basename):
         """
