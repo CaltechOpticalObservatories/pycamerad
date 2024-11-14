@@ -16,8 +16,8 @@ from camera_info import CameraInfo
 # Instantiate a global object of the CameraInfo class. This
 # carries default and current camera settings (mode, type, etc.)
 
-default_interface_config = os.path.join(version.ROOT_DIR, "interface.json")
-default_host_config = os.path.join(version.ROOT_DIR, "hosts.json")
+default_interface_config = os.path.join(version.CONFIG_DIR, "interface.json")
+default_host_config = os.path.join(version.CONFIG_DIR, "hosts.json")
 
 
 class Interface:
@@ -26,6 +26,7 @@ class Interface:
     def __init__(self, verbose=True,
                  interface_config_file=default_interface_config,
                  host_config_file=default_host_config):
+
         # read interface
         with open(interface_config_file) as icfgf:
             camera_interface = json.load(icfgf)
@@ -33,6 +34,7 @@ class Interface:
         if "archon" in self.interface:
             self.archon = True
             self.power_commands = []
+            self.device_list = []
         else:
             self.archon = False
             self.power_commands = camera_interface["power_commands"]
@@ -89,8 +91,7 @@ class Interface:
     # --------------------------------------------------------------------------
     # @fn     camerad_open
     # --------------------------------------------------------------------------
-    def camerad_open(self, hostlist=None, do_load=True, do_power_on=True,
-                     do_setup=True):
+    def camerad_open(self, hostlist=None, do_load=True, do_power_on=True):
         """
         Open connection to camera and initialize CCD controllers using the
         default parameters specified in the archon.cfg configuration
@@ -121,31 +122,19 @@ class Interface:
 
         error = self.__send_command("open")[0]
 
-        try:
+        if error == 0:
             if do_load:
                 if error == 0:
-                    print("loading default firmware file...")
-                    error = self.__send_command("load")[0]
+                    self.load()
                 if do_power_on:
                     if error == 0:
                         error = self.set_power("ON")
                 else:
                     print("Skipping POWERON...")
-                if do_setup:
-                    if error == 0:
-                        self.caminfo.__init__()  # re-initializes the camera mode state
-                        error = self.__setup_observation()
-                    if error == 0:
-                        print("camera initialized")
-                    else:
-                        print("ERROR: %d initializing camera" % error)
-                else:
-                    print("Skipping setup...")
             else:
                 print("Skipping load acf, power on and setup")
-        except:
-            error = 1
-            print("ERROR: camerad_open() camera exception")
+        else:
+            print("Error opening connection to camerad")
 
         return error
 
@@ -180,44 +169,24 @@ class Interface:
     # --------------------------------------------------------------------------
     # @fn     load
     # --------------------------------------------------------------------------
-    def load(self, acffile, mode="DEFAULT", basename="", imtype="TEST",
-             power="ON"):
+    def load(self, acffile=None):
         """
         load ACF file
         """
+        print("loading default firmware file...")
 
-        print("DEBUG: load() incomming mode=", mode)
-
-        acffile = os.path.abspath(os.path.expanduser(acffile))
-
-        # update caminfo with values passed in here
-        self.caminfo.set_mode(mode)
-        self.caminfo.set_basename(basename)
-        self.caminfo.set_type(imtype)
-
-        try:
-            print("loading acf file...")
+        if acffile is None:
+            print("loading default acf file...")
+            error = self.__send_command("load")[0]
+        else:
+            acffile = os.path.abspath(os.path.expanduser(acffile))
+            print("loading input acf file: %s" % acffile)
             error = self.__send_command("load", acffile)[0]
-            if power == "ON":
-                if error == 0:
-                    print("turning on power...")
-                    error = self.__send_command("POWERON")[0]
-            elif power == "OFF":
-                if error == 0:
-                    print("turning off power...")
-                    error = self.__send_command("POWEROFF")[0]
-            else:
-                print("unrecognized power argument", power)
-                error = 1
-            if error == 0:
-                error = self.__setup_observation()
-            if error == 0:
-                print("camera initialized")
-            else:
-                print("ERROR: initializing camera")
-        except:
-            error = 1
-            print("ERROR: load() camera exception")
+
+        if error == 0:
+            print("camera initialized")
+        else:
+            print("ERROR: initializing camera")
 
         return error
 
