@@ -4,12 +4,9 @@ import select
 import os
 import json
 from threading import Thread
-from datetime import datetime, timezone
 import time
 from numpy import iterable
 import numpy as np
-# from IPython.core.debugger import Tracer
-# import pdb # use with pdb.set_trace()
 
 import version
 from camera_info import CameraInfo
@@ -34,11 +31,9 @@ class Interface:
         self.interface = camera_interface["interface"]
         if "archon" in self.interface:
             self.archon = True
-            self.power_commands = []
             self.device_list = []
         else:
             self.archon = False
-            self.power_commands = camera_interface["power_commands"]
             self.device_list = camera_interface["device_list"]
 
         # read hosts
@@ -92,7 +87,7 @@ class Interface:
     # --------------------------------------------------------------------------
     # @fn     camerad_open
     # --------------------------------------------------------------------------
-    def camerad_open(self, hostlist=None, do_load=True, do_power_on=True):
+    def camerad_open(self, hostlist=None):
         """
         Open connection to camera and initialize CCD controllers using the
         default parameters specified in the archon.cfg configuration
@@ -121,19 +116,11 @@ class Interface:
                                                 self.hosts[host]["port"]))
             self.number_of_connections += 1
 
+        # send open to all connections
         error = self.__send_command("open")[0]
 
         if error == 0:
-            if do_load:
-                if error == 0:
-                    self.load()
-                if do_power_on:
-                    if error == 0:
-                        error = self.set_power("ON")
-                else:
-                    print("Skipping POWERON...")
-            else:
-                print("Skipping load acf, power on and setup")
+            print("connected to camerad")
         else:
             print("Error opening connection to camerad")
 
@@ -185,9 +172,10 @@ class Interface:
             error = self.__send_command("load", acffile)[0]
 
         if error == 0:
-            print("camera initialized")
+            self.caminfo.set_acf_file(acffile)
+            print("acf file loaded")
         else:
-            print("ERROR: initializing camera")
+            print("ERROR: load acf file failed")
 
         return error
 
@@ -316,46 +304,34 @@ class Interface:
         Set Archon power (i.e. send POWERON or POWEROFF native command).
         Acceptable values are: "ON" or "OFF".
         """
-        error = 0
-        if power == "ON":
-            old_power_on = self.caminfo.get_power()
-            if not old_power_on:
-                if not self.archon:     # ARC interface
-                    if self.power_commands:
-                        print("turning on ARC power...")
-                        error = self.__send_command("native",
-                                                    self.power_commands[0])
-                        if error:
-                            print("ERROR turning on ARC power.")
-                        else:
-                            print("ARC power is now on")
-                            self.caminfo.set_power_on(True)
-                    else:
-                        print("no power commands for ARC interface")
-                        error = 1
-                else:
-                    print("turning on Archon power...")
-                    error = self.__send_command("POWERON")[0]
-                    if error:
-                        print("ERROR turning on Archon power.")
-                    else:
-                        print("Archon power is now on")
-                        self.caminfo.set_power_on(True)
-        elif power == "OFF":
-            if not self.archon:     # ARC interface
-                if self.power_commands:
-                    print("turning off ARC power...")
-                    error = self.__send_command("native",
-                                                self.power_commands[1])
-                else:
-                    print("no power commands for ARC interface")
-                    error = 1
+        old_power_on = self.caminfo.get_power()
+
+        if power == "ON" and not old_power_on:
+            if self.archon:
+                print("turning on Archon power...")
+                error = self.__send_command("POWERON")[0]
             else:
+                print("turning on ARC power...")
+                error = self.__send_command("native", "PON")
+
+        elif power == "OFF" and old_power_on:
+            if self.archon:
                 print("turning off Archon power...")
                 error = self.__send_command("POWEROFF")[0]
+            else:
+                print("turning off ARC power...")
+                error = self.__send_command("native","POF")
         else:
             print("unrecognized power argument", power)
-            error = None
+            error = 1
+
+        if error:
+            print(
+                f"ERROR setting {'Archon' if self.archon else 'ARC'} power "
+                f"to {power}")
+        else:
+            print(f"set {'Archon' if self.archon else 'ARC'} power to {power}")
+            self.caminfo.set_power_on(power == "ON")
 
         return error
 

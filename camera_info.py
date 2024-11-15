@@ -36,6 +36,7 @@ class CameraInfo:
         mode="DEFAULT",
         basename="",
         power_on=False,
+        acf_file="DEFAULT"
     ):
         """
         initialize the class
@@ -44,6 +45,7 @@ class CameraInfo:
         self.mode = mode
         self.basename = basename
         self.power_on = power_on
+        self.acf_file = acf_file
 
     def get_basename(self):
         """
@@ -62,6 +64,11 @@ class CameraInfo:
         Returns: True if power on, otherwise False.
         """
         return self.power_on
+    def get_acf_file(self):
+        """
+        Returns: acf file
+        """
+        return self.acf_file
 
     def set_basename(self, basename):
         """
@@ -83,9 +90,14 @@ class CameraInfo:
         Set the power on.
         Args:
             power_on: True or False
-
-        Returns:
-
         """
         self.power_on = power_on
         return 0
+
+    def set_acf_file(self, acf_file):
+        """
+        Set the acf file.
+        Args:
+            acf_file:
+        """
+        self.acf_file = acf_file

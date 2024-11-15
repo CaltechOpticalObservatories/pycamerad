@@ -1,4 +1,5 @@
-"""Version and package information
+"""
+Version and package information
 """
 import os
 from pathlib import Path

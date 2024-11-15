@@ -1,5 +1,4 @@
 {
     "interface": "archon",
-    "device_list": [],
-    "power_commands": ["PON", "POF"]
+    "device_list": []
 }
