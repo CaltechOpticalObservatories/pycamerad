@@ -440,15 +440,18 @@ class Interface:
                     print(numcams)
                 except select.error:
                     print("select error")
+                    error[cam] = 1
                     break
                 if ready[0]:
                     ret = sendsocket[cam].recv(1024).decode()
                 else:
                     print("select timeout")
                     message.append("\n")
+                    error[cam] = 2
                     break
                 if "DONE" in ret or "ERROR" in ret or "\n" in ret:
                     message.append(ret)
+                    error[cam] = 0
                     break
 
             # dat contains the entire message
