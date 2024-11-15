@@ -13,6 +13,7 @@ import numpy as np
 
 import version
 from camera_info import CameraInfo
+from exposure_info import ExposureInfo
 # Instantiate a global object of the CameraInfo class. This
 # carries default and current camera settings (mode, type, etc.)
 
@@ -44,9 +45,9 @@ class Interface:
         with open(host_config_file) as hcfgf:
             hosts = json.load(hcfgf)
         self.hosts = hosts
-        self.numcams = len(self.hosts)
 
         self.caminfo = CameraInfo()
+        self.expinfo = ExposureInfo()
         self.verbose = verbose
         self.number_of_connections = 0
 
@@ -85,8 +86,8 @@ class Interface:
         if self.archon:
             print("  mode          = '%s'" % self.caminfo.get_mode())
         print("  basename      = '%s'" % self.caminfo.get_basename())
-        print("  type          = '%s'" % self.caminfo.get_type())
-        print("  exptime       = %d" % self.caminfo.get_exptime())
+        print("  type          = '%s'" % self.expinfo.get_type())
+        print("  exptime       = %d" % self.expinfo.get_exptime())
 
     # --------------------------------------------------------------------------
     # @fn     camerad_open
@@ -194,7 +195,7 @@ class Interface:
     # --------------------------------------------------------------------------
     # @fn     readparam
     # --------------------------------------------------------------------------
-    def readparam(self, paramname):
+    def get_param(self, paramname):
         """
         Read a parameter directly from Archon configuration memory.
 
@@ -211,7 +212,7 @@ class Interface:
         except:
             error = 1
             retval = None
-            print("ERROR: readparam() camera exception")
+            print("ERROR: get_param() camera exception")
 
         return error, retval
 
@@ -268,13 +269,15 @@ class Interface:
         This has no functionality.
         -------------------------------------------------
         """
-        old_type = self.caminfo.get_type()
+        old_type = self.expinfo.get_type()
         if old_type != imtype:
-            error = self.caminfo.set_type(imtype)
-        #       if not error:
-        #           error = __setup_observation(quiet=True)
-        #       if not error:
-        #           print "IMAGE TYPE changed: %s -> %s"%(old_type,imtype)
+            error = self.__send_command("key",
+                                        "IMTYPE=%s//Image type" % imtype)[0]
+            if not error:
+                error = self.expinfo.set_type(imtype)
+                print("IMTYPE set to %s" % imtype)
+            else:
+                print("ERROR setting type to %s" % imtype)
         else:
             error = 0
         return error
@@ -289,17 +292,17 @@ class Interface:
         An empty string is NOT allowed.
         This is called "set_basename" for backwards-compatibility with ZTF scripts.
         """
-        basenamechars = len(basename.split())
-        if basenamechars < 1:
-            print("error: basename cannot be empty")
+        if not basename:
+            print("ERROR: basename cannot be empty")
             return 1
         old_basename = self.caminfo.get_basename()
         if old_basename != basename:
-            error = self.caminfo.set_basename(basename)
+            error = self.__send_command("basename", basename)[0]
             if not error:
-                error = self.__send_command("basename", basename)[0]
-            if not error:
+                error = self.caminfo.set_basename(basename)
                 print("BASENAME changed: %s -> %s" % (old_basename, basename))
+            else:
+                print("ERROR setting basename to %s" % basename)
         else:
             error = 0
         return error
@@ -313,18 +316,31 @@ class Interface:
         Set Archon power (i.e. send POWERON or POWEROFF native command).
         Acceptable values are: "ON" or "OFF".
         """
+        error = 0
         if power == "ON":
-            if not self.archon:     # ARC interface
-                if self.power_commands:
-                    print("turning on ARC power...")
-                    error = self.__send_command("native",
-                                                self.power_commands[0])
+            old_power_on = self.caminfo.get_power()
+            if not old_power_on:
+                if not self.archon:     # ARC interface
+                    if self.power_commands:
+                        print("turning on ARC power...")
+                        error = self.__send_command("native",
+                                                    self.power_commands[0])
+                        if error:
+                            print("ERROR turning on ARC power.")
+                        else:
+                            print("ARC power is now on")
+                            self.caminfo.set_power_on(True)
+                    else:
+                        print("no power commands for ARC interface")
+                        error = 1
                 else:
-                    print("no power commands for ARC interface")
-                    error = 1
-            else:
-                print("turning on Archon power...")
-                error = self.__send_command("POWERON")[0]
+                    print("turning on Archon power...")
+                    error = self.__send_command("POWERON")[0]
+                    if error:
+                        print("ERROR turning on Archon power.")
+                    else:
+                        print("Archon power is now on")
+                        self.caminfo.set_power_on(True)
         elif power == "OFF":
             if not self.archon:     # ARC interface
                 if self.power_commands:
@@ -354,9 +370,10 @@ class Interface:
         This is essentially a macro, calling the following functions on the server:
         expose(), readframe(), and writeframe()
         """
-        self.caminfo.set_exptime(exptime)
+        self.expinfo.set_exptime(exptime)
+        self.expinfo.set_iterations(iterations)
 
-        print("starting exposure")
+        print("starting %d exposures" % iterations)
         error = self.__send_command("expose", iterations)[0]
 
         return error
@@ -526,38 +543,6 @@ class Interface:
 
         return errno, ret
 
-    # --------------------------------------------------------------------------
-    # @fn     __setup_observation
-    # @brief  setup observation
-    #
-    # This is an internal package function, not meant to be called by the user.
-    # --------------------------------------------------------------------------
-    def __setup_observation(self, quiet=False):
-
-        print("CAMERA_SETUP_OBSERVATION...")
-        print("DEBUG: setup_observation incoming mode=", self.caminfo.get_mode())
-        if not quiet:
-            self.print_settings()
-
-        # At minimum, always use YYYYMMDD_hhmmss as the image root name, even
-        # if "basename" is empty (note that image_name can never be empty).
-        # If basename is not empty then the timestamp is added to it.
-
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-
-        if self.caminfo.get_basename() != "":
-            image_name = self.caminfo.get_basename() + "_" + timestamp
-        else:
-            image_name = timestamp
-
-        error = self.__send_command("basename", image_name)[0]
-        if error == 0:
-            error = self.__send_command("exptime", self.caminfo.exptime)[0]
-        if error == 0 and self.archon:
-            error = self.__send_command("mode", self.caminfo.get_mode())[0]
-        return error
-
-
     # Code after here is to make the magic board work.
     # That is, create and write bitstreams
     # -----------------------------------------------------------------------------
@@ -649,18 +634,22 @@ class Interface:
         error = 0
 
         if os.path.isfile(os.path.expanduser(acf_file)):
-            error = self.load(acf_file, mode=runthismode)  # load in now in same file
+            error = self.load(acf_file)  # load in now in same file
         if error:
-            print("ztf.camera.load('%s') failed" % acf_file)
+            print("load('%s') failed" % acf_file)
             return error
-        if error == 0:
-            error = self.set_type("TEST")
-            print("Set type: ")
-            print(error)
-        if error == 0:
-            error = self.set_basename("zzmagic")
-            print("Set basename: ")
-            print(error)
+        error = self.set_mode(runthismode)
+        if error:
+            print("set_mode('%s') failed" % runthismode)
+            return error
+        error = self.set_type("TEST")
+        if error:
+            print("set_type('TEST') failed")
+            return error
+        error = self.set_basename("magic")
+        if error:
+            print("set_basename('magic') failed")
+            return error
         # optional delay time for long startup sequences
         time.sleep(delay)
 
@@ -675,49 +664,5 @@ class Interface:
             print("Time to write 48 bits: %.3f sec" % (time.time() - time_0))
 
         self.expose(0, iterations)  # expose is now in same file
-
-        return error
-
-
-    # -----------------------------------------------------------------------------
-    # @fn     run
-    # @brief  take an exposure
-    #
-    # specify the acf file name if you want it to load.
-    # -----------------------------------------------------------------------------
-    def run(
-        self,
-        acf_file="none",
-        iterations=1,
-        read_cds=False,
-        exptime=0,
-        timeit=False,
-        basename="zztf",
-    ):
-
-        if iterations <= 0:  # check number of iterations
-            # error = 1
-            print("iterations must be >0")
-        if read_cds:
-            runthismode = "DEFAULT"
-        else:
-            runthismode = "RAW"
-
-        error = 0
-        time_0 = time.time()
-        # if the parameter acf_file is not set, don't load anything
-        if os.path.isfile(os.path.expanduser(acf_file)):
-            error = self.load(acf_file, mode=runthismode)
-        if error == 0:
-            error = self.set_type("TEST")
-        if error == 0:
-            error = self.set_basename(basename)
-
-        # perform <iterations> of test "exposures."
-        # all exposures go into the same fits file
-        self.expose(exptime, iterations)
-
-        if timeit:
-            print("completed in %.2f" % (time.time() - time_0))
 
         return error
